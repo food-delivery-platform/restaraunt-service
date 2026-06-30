@@ -6,6 +6,10 @@ MenuService stores menu items in Supabase. The `price` is serialized as a string
 
 ## REST API Summary
 
+- `GET /api/restaurants/{restaurantId}/menu-item-categories` - Get menu item categories by restaurant
+- `POST /api/restaurants/{restaurantId}/menu-item-categories` - Add menu item category
+- `POST /api/menu-item-categories/batch` - Add menu item categories
+
 - `GET /api/menu-items/{id}` — Get menu item by ID
 - `GET /api/restaurants/{restaurantId}/menu-items` — Get available menu items by restaurant
 - `POST /api/menu-items/by-ids` — Get menu items by IDs
@@ -22,13 +26,14 @@ Used when MenuService returns menu item data to other services or frontends.
 
 ```typescript
 export type MenuItemDto = {
-  id: string; // UUID from Supabase
+  id: string;
   restaurantId: string;
 
   name: string;
   description?: string;
   category?: {
     id: string;
+    restaurantId: string;
     name: string;
   };
 
@@ -65,6 +70,18 @@ export type MenuItemDto = {
     fat?: number;
     carbs?: number;
   };
+};
+```
+
+## CategoryDto
+
+Used when MenuService returns menu item category data.
+
+```typescript
+export type CategoryDto = {
+  id: string;
+  restaurantId: string;
+  name: string;
 };
 ```
 
@@ -111,6 +128,27 @@ export type GetMenuItemsByRestaurantResponseDto = {
 };
 ```
 
+## Get Menu Item Categories by Restaurant ID
+
+Used by Restaurant App and Customer App to display categories for a selected restaurant.
+
+- **REST method:** `GET`
+- **Endpoint:** `/api/restaurants/{restaurantId}/menu-item-categories`
+- **Path parameter:** `restaurantId`
+- **Response body:** `GetCategoriesByRestaurantResponseDto`
+- **HTTP statuses:**
+  - `200 OK` on success
+  - `404 Not Found` when the restaurant does not exist
+
+### Response
+
+```typescript
+export type GetCategoriesByRestaurantResponseDto = {
+  restaurantId: string;
+  categories: CategoryDto[];
+};
+```
+
 ## Get Menu Items by IDs
 
 Used by Customer App when the user opens the cart.
@@ -140,6 +178,71 @@ export type GetMenuItemsByIdsResponseDto = {
   items: MenuItemDto[];
   unavailableItemIds: string[]; // includes IDs for items that are missing or not available
   totalPrice: string; // sum of all available items prices
+};
+```
+
+## Add Menu Item Category
+
+Used by the Restaurant App to add a new category for a restaurant menu.
+
+- **REST method:** `POST`
+- **Endpoint:** `/api/restaurants/{restaurantId}/menu-item-categories`
+- **Path parameter:** `restaurantId`
+- **Request body:** `AddCategoryRequestDto`
+- **Response body:** `AddCategoryResponseDto`
+- **HTTP statuses:**
+  - `201 Created` on success
+  - `400 Bad Request` for validation errors
+  - `401 Unauthorized` when no token provided
+  - `403 Forbidden` when the restaurant is not allowed
+  - `404 Not Found` when the restaurant does not exist
+
+### Request
+
+```typescript
+export type AddCategoryRequestDto = {
+  restaurantId: string;
+  name: string;
+};
+```
+
+### Response
+
+```typescript
+export type AddCategoryResponseDto = {
+  category: CategoryDto;
+};
+```
+
+## Add Menu Item Categories
+
+Used by the Restaurant App to add multiple categories for a restaurant menu.
+
+- **REST method:** `POST`
+- **Endpoint:** `/api/menu-item-categories/batch`
+- **Request body:** `AddCategoriesRequestDto`
+- **Response body:** `AddCategoriesResponseDto`
+- **HTTP statuses:**
+  - `201 Created` on success
+  - `400 Bad Request` for validation errors
+  - `401 Unauthorized` when no token provided
+  - `403 Forbidden` when the restaurant is not allowed
+  - `404 Not Found` when the restaurant does not exist
+
+### Request
+
+```typescript
+export type AddCategoriesRequestDto = {
+  restaurantId: string;
+  names: string[];
+};
+```
+
+### Response
+
+```typescript
+export type AddCategoriesResponseDto = {
+  categories: CategoryDto[];
 };
 ```
 
@@ -327,7 +430,7 @@ export type MenuValidationErrorDto = {
 
 ## Important Notes
 
-- The `id` field is a UUID from Supabase.
+- ID fields are strings.
 - Price is serialized as a string (e.g., `"12.99"`) to avoid floating-point precision issues.
 
 ### Example
@@ -341,6 +444,7 @@ export type MenuValidationErrorDto = {
   "currency": "ILS",
   "category": {
     "id": "9b5f7bd2-e7cb-4f1e-b9cf-0461d9c01000",
+    "restaurantId": "64c1a2b3-d4e5-4678-9012-345600000000",
     "name": "Noodles"
   },
   "isAvailable": true

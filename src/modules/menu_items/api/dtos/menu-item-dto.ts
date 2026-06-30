@@ -1,6 +1,8 @@
 import { z } from "zod";
 
-const uuidSchema = z.string().uuid();
+import { categoryDtoSchema } from "./category-dto";
+
+const idSchema = z.string().min(1);
 
 const priceSchema = z.string().regex(/^\d+(\.\d{1,2})?$/, {
   message: "Price must be a decimal string with up to 2 decimal places",
@@ -14,11 +16,6 @@ const menuItemLabelsDtoSchema = z.object({
   glutenFree: z.boolean().optional(),
   lactoseFree: z.boolean().optional(),
   halal: z.boolean().optional(),
-});
-
-const menuItemCategoryDtoSchema = z.object({
-  id: uuidSchema,
-  name: z.string(),
 });
 
 const menuItemPortionDtoSchema = z.object({
@@ -43,12 +40,12 @@ const spicyLevelSchema = z.union([
 ]);
 
 export const menuItemDtoSchema = z.object({
-  id: uuidSchema,
-  restaurantId: uuidSchema,
+  id: idSchema,
+  restaurantId: idSchema,
 
   name: z.string(),
   description: z.string().optional(),
-  category: menuItemCategoryDtoSchema.optional(),
+  category: categoryDtoSchema.optional(),
 
   price: priceSchema,
   currency: z.string(),

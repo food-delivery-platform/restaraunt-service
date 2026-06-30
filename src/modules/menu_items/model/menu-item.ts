@@ -1,9 +1,6 @@
-export type SpicyLevel = 0 | 1 | 2 | 3;
+import type { Category } from "./category";
 
-export type MenuItemCategory = {
-  id: string;
-  name: string;
-};
+export type SpicyLevel = 0 | 1 | 2 | 3;
 
 export type MenuItemLabels = {
   spicy?: boolean;
@@ -35,7 +32,7 @@ export type MenuItem = {
 
   name: string;
   description?: string;
-  category?: MenuItemCategory;
+  category?: Category;
 
   price: string;
   currency: string;
