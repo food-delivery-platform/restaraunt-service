@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { menuItemDtoSchema } from "./menu-item-dto";
+import { type MenuItemDto, menuItemDtoSchema } from "./menu-item-dto";
 
 const menuItemIdSchema = menuItemDtoSchema.shape.id;
 const restaurantIdSchema = menuItemDtoSchema.shape.restaurantId;
@@ -22,63 +22,50 @@ export type ValidateMenuItemsForOrderRequestDto = z.infer<
   typeof validateMenuItemsForOrderRequestDtoSchema
 >;
 
-const validatedOrderMenuItemDtoSchema = z.object({
-  menuItemId: menuItemIdSchema,
-  restaurantId: restaurantIdSchema,
+export type ValidatedOrderMenuItemDto = {
+  menuItemId: MenuItemDto["id"];
+  restaurantId: MenuItemDto["restaurantId"];
 
-  name: z.string(),
-  quantity: z.number().int().positive(),
+  name: MenuItemDto["name"];
+  quantity: number;
 
-  price: priceSchema,
-  currency: z.string(),
+  price: MenuItemDto["price"];
+  currency: MenuItemDto["currency"];
 
-  totalPrice: priceSchema,
-});
+  totalPrice: MenuItemDto["price"];
+};
 
-export type ValidatedOrderMenuItemDto = z.infer<
-  typeof validatedOrderMenuItemDtoSchema
->;
-
-const menuValidationErrorCodeSchema = z.enum([
+const menuValidationErrorCodes = [
   "ITEM_NOT_FOUND",
   "ITEM_UNAVAILABLE",
   "ITEM_RESTAURANT_MISMATCH",
   "PRICE_CHANGED",
   "INVALID_QUANTITY",
   "CURRENCY_MISMATCH",
-]);
+] as const;
 
-export type MenuValidationErrorCode = z.infer<
-  typeof menuValidationErrorCodeSchema
->;
+export type MenuValidationErrorCode =
+  (typeof menuValidationErrorCodes)[number];
 
-const menuValidationErrorDtoSchema = z.object({
-  menuItemId: menuItemIdSchema.optional(),
+export type MenuValidationErrorDto = {
+  menuItemId?: MenuItemDto["id"];
 
-  code: menuValidationErrorCodeSchema,
-  message: z.string(),
+  code: MenuValidationErrorCode;
+  message: string;
 
-  currentPrice: priceSchema.optional(),
-  expectedPrice: priceSchema.optional(),
-});
+  currentPrice?: MenuItemDto["price"];
+  expectedPrice?: MenuItemDto["price"];
+};
 
-export type MenuValidationErrorDto = z.infer<
-  typeof menuValidationErrorDtoSchema
->;
+export type ValidateMenuItemsForOrderResponseDto = {
+  valid: boolean;
 
-const validateMenuItemsForOrderResponseDtoSchema = z.object({
-  valid: z.boolean(),
+  restaurantId: MenuItemDto["restaurantId"];
 
-  restaurantId: restaurantIdSchema,
+  items: ValidatedOrderMenuItemDto[];
 
-  items: z.array(validatedOrderMenuItemDtoSchema),
+  totalPrice: MenuItemDto["price"];
+  currency: MenuItemDto["currency"];
 
-  totalPrice: priceSchema,
-  currency: z.string(),
-
-  errors: z.array(menuValidationErrorDtoSchema),
-});
-
-export type ValidateMenuItemsForOrderResponseDto = z.infer<
-  typeof validateMenuItemsForOrderResponseDtoSchema
->;
+  errors: MenuValidationErrorDto[];
+};
