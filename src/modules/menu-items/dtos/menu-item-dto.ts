@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { categoryDtoSchema } from "./category-dto";
+import { categoryDtoSchema } from "../../categories/dtos/category-dto";
 
 const idSchema = z.string().min(1);
 

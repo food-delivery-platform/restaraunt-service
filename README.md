@@ -6,6 +6,10 @@ MenuService stores menu items in Supabase. The `price` is serialized as a string
 
 ## REST API Summary
 
+- `GET /api/restaurants` - Get all restaurants
+- `POST /api/restaurants` - Add restaurant
+- `PATCH /api/restaurants/{id}` - Edit restaurant
+
 - `GET /api/restaurants/{restaurantId}/menu-item-categories` - Get menu item categories by restaurant
 - `POST /api/restaurants/{restaurantId}/menu-item-categories` - Add menu item category
 - `POST /api/menu-item-categories/batch` - Add menu item categories
@@ -82,6 +86,125 @@ export type CategoryDto = {
   id: string;
   restaurantId: string;
   name: string;
+};
+```
+
+## RestaurantDto
+
+Used when MenuService returns restaurant data to other services or frontends.
+
+`venueType` and `cuisineTags` are intentionally not part of this DTO.
+
+```typescript
+export type RestaurantDto = {
+  id: string;
+  ownerId: string;
+  addressId: string;
+
+  name: string;
+  slug?: string;
+  description?: string;
+
+  isOpen: boolean;
+  rating?: number; // 0-5
+  imageUrl?: string;
+
+  createdAt: string;
+  updatedAt: string;
+};
+```
+
+## Get All Restaurants
+
+Used to retrieve all restaurants.
+
+- **REST method:** `GET`
+- **Endpoint:** `/api/restaurants`
+- **Response body:** `GetRestaurantsResponseDto`
+- **HTTP statuses:**
+  - `200 OK` on success
+
+### Response
+
+```typescript
+export type GetRestaurantsResponseDto = {
+  restaurants: RestaurantDto[];
+};
+```
+
+## Add Restaurant
+
+Used to add a new restaurant.
+
+- **REST method:** `POST`
+- **Endpoint:** `/api/restaurants`
+- **Request body:** `AddRestaurantRequestDto`
+- **Response body:** `AddRestaurantResponseDto`
+- **HTTP statuses:**
+  - `201 Created` on success
+  - `400 Bad Request` for validation errors
+  - `401 Unauthorized` when no token provided
+  - `403 Forbidden` when the owner is not allowed
+  - `404 Not Found` when the address does not exist
+
+### Request
+
+```typescript
+export type AddRestaurantRequestDto = {
+  ownerId: string;
+  addressId: string;
+
+  name: string;
+  slug?: string;
+  description?: string;
+
+  isOpen?: boolean;
+  imageUrl?: string;
+};
+```
+
+### Response
+
+```typescript
+export type AddRestaurantResponseDto = {
+  restaurant: RestaurantDto;
+};
+```
+
+## Edit Restaurant
+
+Used to update restaurant details.
+
+- **REST method:** `PATCH`
+- **Endpoint:** `/api/restaurants/{id}`
+- **Path parameter:** `id` — restaurant ID
+- **Request body:** `EditRestaurantRequestDto`
+- **Response body:** `EditRestaurantResponseDto`
+- **HTTP statuses:**
+  - `200 OK` on success
+  - `400 Bad Request` for invalid input
+  - `401 Unauthorized` when no token provided
+  - `403 Forbidden` when the restaurant is not allowed
+  - `404 Not Found` when the restaurant does not exist
+
+### Request
+
+```typescript
+export type EditRestaurantRequestDto = {
+  name?: string;
+  slug?: string;
+  description?: string;
+
+  isOpen?: boolean;
+  imageUrl?: string;
+};
+```
+
+### Response
+
+```typescript
+export type EditRestaurantResponseDto = {
+  restaurant: RestaurantDto;
 };
 ```
 

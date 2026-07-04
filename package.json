@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "check": "npm run typecheck && npm run lint && npm run format:check",
     "format:check": "prettier --check \"src/**/*.ts\" \"package*.json\" \"tsconfig.json\" \".prettierrc.json\" \"eslint.config.mjs\" \".github/**/*.yml\"",
     "lint": "eslint src --max-warnings=0",
     "typecheck": "tsc --noEmit"
