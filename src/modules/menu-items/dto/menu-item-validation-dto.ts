@@ -1,22 +1,7 @@
-import { z } from "zod";
+import type { z } from "zod";
 
-import { type MenuItemDto, menuItemDtoSchema } from "./menu-item-dto";
-
-const menuItemIdSchema = menuItemDtoSchema.shape.id;
-const restaurantIdSchema = menuItemDtoSchema.shape.restaurantId;
-const priceSchema = menuItemDtoSchema.shape.price;
-
-const validateMenuItemsForOrderItemRequestDtoSchema = z.object({
-  menuItemId: menuItemIdSchema,
-  quantity: z.number().int().positive(),
-  expectedPrice: priceSchema,
-  currency: z.string(),
-});
-
-export const validateMenuItemsForOrderRequestDtoSchema = z.object({
-  restaurantId: restaurantIdSchema,
-  items: z.array(validateMenuItemsForOrderItemRequestDtoSchema),
-});
+import { type MenuItemDto } from "./menu-item-dto";
+import type { validateMenuItemsForOrderRequestDtoSchema } from "../schemas/menu-item-validation-schema";
 
 export type ValidateMenuItemsForOrderRequestDto = z.infer<
   typeof validateMenuItemsForOrderRequestDtoSchema

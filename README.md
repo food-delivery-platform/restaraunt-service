@@ -4,25 +4,47 @@ This document describes DTOs used for communication between MenuService and exte
 
 MenuService stores menu items in Supabase. The `price` is serialized as a string to avoid floating-point precision issues, for example `"12.99"`.
 
+## PostgreSQL credentials
+
+In production, set `AWS_DB_SECRET_ID` to the name or ARN of an AWS Secrets
+Manager secret and set `AWS_REGION`. Both settings are required. The secret must
+contain:
+
+```json
+{
+  "RESTAURANT_DB_URL": "postgresql://user:password@host:5432/database"
+}
+```
+
+The application role needs `secretsmanager:GetSecretValue` for that secret and,
+when a customer-managed KMS key is used, `kms:Decrypt` for the key. The secret is
+retrieved once and cached for the lifetime of the process.
+
 ## REST API Summary
 
-- `GET /api/restaurants` - Get all restaurants
-- `POST /api/restaurants` - Add restaurant
-- `PATCH /api/restaurants/{id}` - Edit restaurant
+- `GET /restaurants` - Get all restaurants
+- `GET /restaurants/{id}` - Get restaurant by ID
+- `POST /restaurants` - Add restaurant
+- `PATCH /restaurants/{id}` - Edit restaurant
 
-- `GET /api/restaurants/{restaurantId}/menu-item-categories` - Get menu item categories by restaurant
-- `POST /api/restaurants/{restaurantId}/menu-item-categories` - Add menu item category
-- `POST /api/menu-item-categories/batch` - Add menu item categories
+- `GET /categories?restaurantId={restaurantId}` - Get categories by restaurant
+- `POST /categories` - Add category
+- `POST /categories/batch` - Add categories
 
-- `GET /api/menu-items/{id}` — Get menu item by ID
-- `GET /api/restaurants/{restaurantId}/menu-items` — Get available menu items by restaurant
-- `POST /api/menu-items/by-ids` — Get menu items by IDs
-- `POST /api/menu-items` — Add menu item
-- `PATCH /api/menu-items/{id}` — Edit menu item
+- `GET /menu-items/{id}` — Get menu item by ID
+- `GET /menu-items?restaurantId={restaurantId}` — Get available menu items by restaurant
+- `POST /menu-items/by-ids` — Get menu items by IDs
+- `POST /menu-items` — Add menu item
+- `PATCH /menu-items/{id}` — Edit menu item
 
 ## Lambda Functions
 
 - `ValidateMenuItems` — Validate menu items for order creation
+
+The Lambda handler is `src/lambdas/validate-menu-items.handler`. It accepts the
+`ValidateMenuItemsForOrderRequestDto` object as the invocation event and returns
+`ValidateMenuItemsForOrderResponseDto` directly. Order validation is not exposed
+as an HTTP endpoint.
 
 ## MenuItemDto
 
@@ -119,7 +141,7 @@ export type RestaurantDto = {
 Used to retrieve all restaurants.
 
 - **REST method:** `GET`
-- **Endpoint:** `/api/restaurants`
+- **Endpoint:** `/restaurants`
 - **Response body:** `GetRestaurantsResponseDto`
 - **HTTP statuses:**
   - `200 OK` on success
@@ -132,12 +154,32 @@ export type GetRestaurantsResponseDto = {
 };
 ```
 
+## Get Restaurant by ID
+
+Used to retrieve one restaurant.
+
+- **REST method:** `GET`
+- **Endpoint:** `/restaurants/{id}`
+- **Path parameter:** `id` — restaurant ID
+- **Response body:** `GetRestaurantResponseDto`
+- **HTTP statuses:**
+  - `200 OK` on success
+  - `404 Not Found` when the restaurant does not exist
+
+### Response
+
+```typescript
+export type GetRestaurantResponseDto = {
+  restaurant: RestaurantDto;
+};
+```
+
 ## Add Restaurant
 
 Used to add a new restaurant.
 
 - **REST method:** `POST`
-- **Endpoint:** `/api/restaurants`
+- **Endpoint:** `/restaurants`
 - **Request body:** `AddRestaurantRequestDto`
 - **Response body:** `AddRestaurantResponseDto`
 - **HTTP statuses:**
@@ -176,7 +218,7 @@ export type AddRestaurantResponseDto = {
 Used to update restaurant details.
 
 - **REST method:** `PATCH`
-- **Endpoint:** `/api/restaurants/{id}`
+- **Endpoint:** `/restaurants/{id}`
 - **Path parameter:** `id` — restaurant ID
 - **Request body:** `EditRestaurantRequestDto`
 - **Response body:** `EditRestaurantResponseDto`
@@ -213,7 +255,7 @@ export type EditRestaurantResponseDto = {
 Used to retrieve a single menu item by its ID.
 
 - **REST method:** `GET`
-- **Endpoint:** `/api/menu-items/{id}`
+- **Endpoint:** `/menu-items/{id}`
 - **Path parameter:** `id` — menu item ID
 - **Response body:** `MenuItemDto`
 - **HTTP statuses:**
@@ -229,17 +271,16 @@ Response body is `MenuItemDto`
 Used by Customer App to display available menu items for a selected restaurant.
 
 - **REST method:** `GET`
-- **Endpoint:** `/api/restaurants/{restaurantId}/menu-items`
-- **Request:** path parameter `restaurantId` and optional query parameter `available`
+- **Endpoint:** `/menu-items`
+- **Request:** query parameter `restaurantId` and optional query parameter `available`
 - **Response body:** `GetMenuItemsByRestaurantResponseDto`
 - **HTTP statuses:**
   - `200 OK` on success
   - `400 Bad Request` for invalid query values
-  - `404 Not Found` when the restaurant does not exist
 
 ### Request
 
-- **Path parameter:** `restaurantId`
+- **Query parameter:** `restaurantId`
 - **Query parameter:** `available?: true`
 
 ### Response
@@ -256,12 +297,11 @@ export type GetMenuItemsByRestaurantResponseDto = {
 Used by Restaurant App and Customer App to display categories for a selected restaurant.
 
 - **REST method:** `GET`
-- **Endpoint:** `/api/restaurants/{restaurantId}/menu-item-categories`
-- **Path parameter:** `restaurantId`
+- **Endpoint:** `/categories`
+- **Query parameter:** `restaurantId`
 - **Response body:** `GetCategoriesByRestaurantResponseDto`
 - **HTTP statuses:**
   - `200 OK` on success
-  - `404 Not Found` when the restaurant does not exist
 
 ### Response
 
@@ -279,7 +319,7 @@ Used by Customer App when the user opens the cart.
 MenuService returns only items that still exist and are available.
 
 - **REST method:** `POST`
-- **Endpoint:** `/api/menu-items/by-ids`
+- **Endpoint:** `/menu-items/by-ids`
 - **Request body:** `GetMenuItemsByIdsRequestDto`
 - **Response body:** `GetMenuItemsByIdsResponseDto`
 - **HTTP statuses:**
@@ -309,8 +349,7 @@ export type GetMenuItemsByIdsResponseDto = {
 Used by the Restaurant App to add a new category for a restaurant menu.
 
 - **REST method:** `POST`
-- **Endpoint:** `/api/restaurants/{restaurantId}/menu-item-categories`
-- **Path parameter:** `restaurantId`
+- **Endpoint:** `/categories`
 - **Request body:** `AddCategoryRequestDto`
 - **Response body:** `AddCategoryResponseDto`
 - **HTTP statuses:**
@@ -342,7 +381,7 @@ export type AddCategoryResponseDto = {
 Used by the Restaurant App to add multiple categories for a restaurant menu.
 
 - **REST method:** `POST`
-- **Endpoint:** `/api/menu-item-categories/batch`
+- **Endpoint:** `/categories/batch`
 - **Request body:** `AddCategoriesRequestDto`
 - **Response body:** `AddCategoriesResponseDto`
 - **HTTP statuses:**
@@ -374,7 +413,7 @@ export type AddCategoriesResponseDto = {
 Used by the Restaurant App to add a new menu item for a restaurant.
 
 - **REST method:** `POST`
-- **Endpoint:** `/api/menu-items`
+- **Endpoint:** `/menu-items`
 - **Request body:** `AddMenuItemRequestDto`
 - **Response body:** `AddMenuItemResponseDto`
 - **HTTP statuses:**
@@ -421,7 +460,7 @@ export type AddMenuItemResponseDto = {
 Used by the Restaurant App to update an existing menu item.
 
 - **REST method:** `PATCH`
-- **Endpoint:** `/api/menu-items/{id}`
+- **Endpoint:** `/menu-items/{id}`
 - **Path parameter:** `id` — menu item ID
 - **Request body:** `EditMenuItemRequestDto`
 - **Response body:** `EditMenuItemResponseDto`

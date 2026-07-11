@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { categoryDtoSchema } from "../../categories/dtos/category-dto";
+import { categoryDtoSchema } from "../../categories/schemas/category-schema";
 
 const idSchema = z.string().min(1);
 
@@ -52,7 +52,6 @@ export const menuItemDtoSchema = z.object({
 
   isAvailable: z.boolean(),
 
-  ingredients: z.array(z.string()).optional(),
   allergens: z.array(z.string()).optional(),
 
   labels: menuItemLabelsDtoSchema.optional(),
@@ -60,5 +59,3 @@ export const menuItemDtoSchema = z.object({
   spicyLevel: spicyLevelSchema.optional(),
   nutrition: menuItemNutritionDtoSchema.optional(),
 });
-
-export type MenuItemDto = z.infer<typeof menuItemDtoSchema>;

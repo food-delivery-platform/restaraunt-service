@@ -1,30 +1,18 @@
-import { z } from "zod";
+import type { z } from "zod";
 
-const idSchema = z.string().min(1);
-
-export const categoryDtoSchema = z.object({
-  id: idSchema,
-  restaurantId: idSchema,
-  name: z.string().min(1),
-});
+import type {
+  addCategoriesRequestDtoSchema,
+  addCategoryRequestDtoSchema,
+  categoryDtoSchema,
+} from "../schemas/category-schema";
 
 export type CategoryDto = z.infer<typeof categoryDtoSchema>;
-
-export const addCategoryRequestDtoSchema = z.object({
-  restaurantId: idSchema,
-  name: z.string().min(1),
-});
 
 export type AddCategoryRequestDto = z.infer<typeof addCategoryRequestDtoSchema>;
 
 export type AddCategoryResponseDto = {
   category: CategoryDto;
 };
-
-export const addCategoriesRequestDtoSchema = z.object({
-  restaurantId: idSchema,
-  names: z.array(z.string().min(1)).min(1),
-});
 
 export type AddCategoriesRequestDto = z.infer<
   typeof addCategoriesRequestDtoSchema
