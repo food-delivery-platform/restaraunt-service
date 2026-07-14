@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: "Menu service container stack: ECR, ECS Fargate, ALB, logs, IAM, and application roles."
+Description: "Menu service container stack: ECR, ECS Fargate service, ALB, logs, IAM, and application roles."
 
 Parameters:
   ProjectName:
@@ -9,6 +9,11 @@ Parameters:
   EnvironmentName:
     Type: String
     Default: prod
+
+  EcsClusterName:
+    Type: String
+    Default: food-delivery-preview-cluster
+    Description: Name of the existing ECS cluster where the service will run.
 
   VpcId:
     Type: AWS::EC2::VPC::Id
@@ -89,7 +94,7 @@ Parameters:
 
   ImageUri:
     Type: String
-    Default: public.ecr.aws/docker/library/busybox:latest
+    Default: public.ecr.aws/docker/library/busybox:1.36.1
     Description: Container image to run in ECS. GitHub Actions updates this on every push.
 
   DatabaseSecretArn:
@@ -116,7 +121,7 @@ Conditions:
   HasApplicationImage: !Not
     - !Equals
       - !Ref ImageUri
-      - public.ecr.aws/docker/library/busybox:latest
+      - public.ecr.aws/docker/library/busybox:1.36.1
 
 Resources:
   Repository:
@@ -143,11 +148,6 @@ Resources:
               }
             ]
           }
-
-  Cluster:
-    Type: AWS::ECS::Cluster
-    Properties:
-      ClusterName: !Sub ${ProjectName}-${EnvironmentName}
 
   LogGroup:
     Type: AWS::Logs::LogGroup
@@ -294,7 +294,7 @@ Resources:
       - Listener
     Properties:
       ServiceName: !Sub ${ProjectName}-${EnvironmentName}
-      Cluster: !Ref Cluster
+      Cluster: !Ref EcsClusterName
       DesiredCount: !If
         - HasApplicationImage
         - !Ref DesiredCount
@@ -323,7 +323,7 @@ Resources:
       ResourceId: !Join
         - "/"
         - - service
-          - !Ref Cluster
+          - !Ref EcsClusterName
           - !GetAtt Service.Name
       ScalableDimension: ecs:service:DesiredCount
       ServiceNamespace: ecs
@@ -349,7 +349,7 @@ Outputs:
     Value: !Ref Repository
 
   EcsClusterName:
-    Value: !Ref Cluster
+    Value: !Ref EcsClusterName
 
   EcsServiceName:
     Value: !GetAtt Service.Name

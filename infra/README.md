@@ -3,7 +3,7 @@
 This stack creates the AWS runtime for the Dockerized endpoint service:
 
 - ECR repository
-- ECS Fargate cluster, task definition, and service
+- ECS Fargate task definition and service running in an existing cluster
 - ECS target-tracking auto scaling based on average CPU utilization
 - Application Load Balancer with `/health` target checks
 - CloudWatch log group
@@ -14,6 +14,9 @@ GitHub Actions deploys by running CloudFormation. ECS is not updated directly by
 ## Prerequisites
 
 This stack assumes the GitHub deploy role already exists outside this service stack. Store that role ARN in GitHub as `AWS_ROLE_TO_ASSUME`.
+
+It also assumes the `food-delivery-preview-cluster` ECS cluster already exists.
+You can override that default with the `EcsClusterName` CloudFormation parameter.
 
 That external role needs permission to:
 
@@ -43,6 +46,10 @@ CloudFormation keeps the service at zero tasks while it uses the bootstrap image
 GitHub Actions later deploys the real image by passing
 `ImageUri=<new pushed image>`, which enables the configured desired count and
 autoscaling minimum.
+
+The bootstrap task definition uses the fixed `busybox:1.36.1` tag. Application
+images are tagged with the Git commit SHA, so deployed revisions do not use
+`latest`.
 
 ## GitHub Settings
 
