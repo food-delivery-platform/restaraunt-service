@@ -2,8 +2,8 @@ import { randomUUID } from "node:crypto";
 
 import type { Knex } from "knex";
 
-import { db } from "../../../db/knex";
-import { NotFoundError } from "../../../shared/http";
+import { db } from "../../../shared/db/knex";
+import { HttpError, NotFoundError } from "../../../shared/http";
 import { firstOrThrow, multiplyPrice, sumPrices } from "../../../shared/utils";
 import type { CategoryDto } from "../../categories/dto/category-dto";
 import { restaurantService } from "../../restaurants/services/restaurant-service-impl";
@@ -82,6 +82,12 @@ class MenuItemServiceImpl implements MenuItemService {
     request: AddMenuItemRequestDto,
   ): Promise<MenuItemDto> {
     await this.ensureRestaurantExists(request.restaurantId);
+    if (request.category !== undefined) {
+      await this.ensureCategoryBelongsToRestaurant(
+        request.category.id,
+        request.restaurantId,
+      );
+    }
 
     const row = await this.db<MenuItemEntity>("menu_items")
       .insert({
@@ -119,6 +125,14 @@ class MenuItemServiceImpl implements MenuItemService {
     id: MenuItemDto["id"],
     request: EditMenuItemRequestDto,
   ): Promise<MenuItemDto> {
+    if (request.category !== undefined) {
+      const currentItem = await this.getMenuItem(id);
+      await this.ensureCategoryBelongsToRestaurant(
+        request.category.id,
+        currentItem.restaurantId,
+      );
+    }
+
     const row = await this.db<MenuItemEntity>("menu_items")
       .where({ id })
       .update({
@@ -217,6 +231,20 @@ class MenuItemServiceImpl implements MenuItemService {
   ): Promise<void> {
     if (!(await this.restaurants.restaurantExists(restaurantId))) {
       throw new NotFoundError("Restaurant not found");
+    }
+  }
+
+  private async ensureCategoryBelongsToRestaurant(
+    categoryId: CategoryDto["id"],
+    restaurantId: CategoryDto["restaurantId"],
+  ): Promise<void> {
+    const category = await this.db("categories")
+      .select("id")
+      .where({ id: categoryId, venue_id: restaurantId })
+      .first();
+
+    if (category === undefined) {
+      throw new HttpError(403, "Category access denied");
     }
   }
 }

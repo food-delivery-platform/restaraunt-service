@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import type { Knex } from "knex";
 
-import { db } from "../../../db/knex";
+import { db } from "../../../shared/db/knex";
 import { NotFoundError } from "../../../shared/http";
 import { firstOrThrow } from "../../../shared/utils";
 import { restaurantService } from "../../restaurants/services/restaurant-service-impl";

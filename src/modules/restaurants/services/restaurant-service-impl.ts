@@ -2,8 +2,8 @@ import { randomUUID } from "node:crypto";
 
 import type { Knex } from "knex";
 
-import { db } from "../../../db/knex";
-import { NotFoundError } from "../../../shared/http";
+import { db } from "../../../shared/db/knex";
+import { HttpError, NotFoundError } from "../../../shared/http";
 import { firstOrThrow } from "../../../shared/utils";
 import type {
   AddRestaurantRequestDto,
@@ -60,13 +60,16 @@ class RestaurantServiceImpl implements RestaurantService {
   }
 
   public async addRestaurant(
+    ownerId: RestaurantDto["ownerId"],
     request: AddRestaurantRequestDto,
   ): Promise<RestaurantDto> {
+    await this.ensureAddressBelongsToOwner(request.addressId, ownerId);
+
     const now = new Date();
     const row = await this.db<RestaurantEntity>("venues")
       .insert({
         id: randomUUID(),
-        owner_id: request.ownerId,
+        owner_id: ownerId,
         address_id: request.addressId,
         venue_type: request.venueType,
         name: request.name,
@@ -134,6 +137,32 @@ class RestaurantServiceImpl implements RestaurantService {
       .first();
 
     return row !== undefined;
+  }
+
+  public async restaurantBelongsToOwner(
+    id: RestaurantDto["id"],
+    ownerId: RestaurantDto["ownerId"],
+  ): Promise<boolean> {
+    const row = await this.db<RestaurantEntity>("venues")
+      .select("id")
+      .where({ id, owner_id: ownerId })
+      .first();
+
+    return row !== undefined;
+  }
+
+  private async ensureAddressBelongsToOwner(
+    addressId: RestaurantDto["addressId"],
+    ownerId: RestaurantDto["ownerId"],
+  ): Promise<void> {
+    const address = await this.db<AddressEntity>("addresses")
+      .select("id")
+      .where({ id: addressId, user_id: ownerId })
+      .first();
+
+    if (address === undefined) {
+      throw new HttpError(403, "Address access denied");
+    }
   }
 
   private async getOpeningHoursByVenueIds(

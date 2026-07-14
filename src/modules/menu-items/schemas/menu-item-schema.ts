@@ -1,8 +1,7 @@
 import { z } from "zod";
 
+import { idSchema } from "../../../shared/schemas/http-schema";
 import { categoryDtoSchema } from "../../categories/schemas/category-schema";
-
-const idSchema = z.string().min(1);
 
 const priceSchema = z.string().regex(/^\d+(\.\d{1,2})?$/, {
   message: "Price must be a decimal string with up to 2 decimal places",

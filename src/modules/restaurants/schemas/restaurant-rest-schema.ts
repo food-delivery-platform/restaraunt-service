@@ -3,6 +3,7 @@ import { restaurantDtoSchema } from "./restaurant-schema";
 export const addRestaurantRequestDtoSchema = restaurantDtoSchema
   .omit({
     id: true,
+    ownerId: true,
     rating: true,
     address: true,
     openingHours: true,

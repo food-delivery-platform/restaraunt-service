@@ -6,8 +6,8 @@ MenuService stores menu items in Supabase. The `price` is serialized as a string
 
 ## PostgreSQL credentials
 
-In production, set `AWS_DB_SECRET_ID` to the name or ARN of an AWS Secrets
-Manager secret and set `AWS_REGION`. Both settings are required. The secret must
+In production, set `AWS_DB_SECRET_ARN` to the ARN of an AWS Secrets Manager
+secret and set `AWS_REGION`. Both settings are required. The secret must
 contain:
 
 ```json
@@ -19,6 +19,20 @@ contain:
 The application role needs `secretsmanager:GetSecretValue` for that secret and,
 when a customer-managed KMS key is used, `kms:Decrypt` for the key. The secret is
 retrieved once and cached for the lifetime of the process.
+
+## JWT claims
+
+The HTTP API Gateway is responsible for validating JWT signatures, issuers,
+audiences, and expiration. The service uses `jwt-decode` to decode the payload
+of an optional `Authorization: Bearer <token>` header and exposes its claims as
+`req.jwtPayload`. It does not independently authenticate the token. Requests
+with a malformed authorization header or JWT payload receive `400 Bad Request`.
+
+Protected restaurant-management routes require membership in the
+`restaurant-owner` Cognito group. Restaurant owners can only modify restaurants
+whose `ownerId` matches their JWT `sub`. The group name can be changed with
+`RESTAURANT_OWNER_GROUP`. Menu-item reads, including
+`POST /menu-items/by-ids` and `POST /menu-items/validate`, remain public.
 
 ## REST API Summary
 
@@ -34,17 +48,9 @@ retrieved once and cached for the lifetime of the process.
 - `GET /menu-items/{id}` — Get menu item by ID
 - `GET /menu-items?restaurantId={restaurantId}` — Get available menu items by restaurant
 - `POST /menu-items/by-ids` — Get menu items by IDs
+- `POST /menu-items/validate` — Validate menu items for order creation
 - `POST /menu-items` — Add menu item
 - `PATCH /menu-items/{id}` — Edit menu item
-
-## Lambda Functions
-
-- `ValidateMenuItems` — Validate menu items for order creation
-
-The Lambda handler is `src/lambdas/validate-menu-items.handler`. It accepts the
-`ValidateMenuItemsForOrderRequestDto` object as the invocation event and returns
-`ValidateMenuItemsForOrderResponseDto` directly. Order validation is not exposed
-as an HTTP endpoint.
 
 ## MenuItemDto
 
@@ -170,7 +176,10 @@ Used to retrieve one restaurant.
 
 ```typescript
 export type GetRestaurantResponseDto = {
-  restaurant: RestaurantDto;
+  restaurant: RestaurantDto & {
+    categories: CategoryDto[];
+    menuItems: MenuItemDto[];
+  };
 };
 ```
 
@@ -193,7 +202,6 @@ Used to add a new restaurant.
 
 ```typescript
 export type AddRestaurantRequestDto = {
-  ownerId: string;
   addressId: string;
 
   name: string;
@@ -204,6 +212,8 @@ export type AddRestaurantRequestDto = {
   imageUrl?: string;
 };
 ```
+
+The service sets `ownerId` from the authenticated Cognito JWT `sub` claim.
 
 ### Response
 
@@ -504,10 +514,11 @@ export type EditMenuItemResponseDto = {
 
 ## Validate Menu Items for Order Creation
 
-Lambda function that validates menu items for order creation before the OrderService creates an order.
+HTTP endpoint that validates menu items for order creation before the OrderService creates an order.
 
-- **Type:** Lambda Function
-- **Trigger:** Called by OrderService
+- **REST method:** `POST`
+- **Endpoint:** `/menu-items/validate`
+- **Caller:** OrderService
 - **Input:** `ValidateMenuItemsForOrderRequestDto`
 - **Output:** `ValidateMenuItemsForOrderResponseDto`
 

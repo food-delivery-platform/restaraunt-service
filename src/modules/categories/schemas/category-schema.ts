@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-const idSchema = z.string().min(1);
+import { idSchema } from "../../../shared/schemas/http-schema";
 
 export const categoryDtoSchema = z.object({
   id: idSchema,
