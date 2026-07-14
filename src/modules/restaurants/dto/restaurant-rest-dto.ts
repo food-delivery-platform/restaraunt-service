@@ -1,5 +1,7 @@
 import type { z } from "zod";
 
+import type { CategoryDto } from "../../categories/dto/category-dto";
+import type { MenuItemDto } from "../../menu-items/dto/menu-item-dto";
 import { type RestaurantDto } from "./restaurant-dto";
 import type {
   addRestaurantRequestDtoSchema,
@@ -11,7 +13,12 @@ export type GetRestaurantsResponseDto = {
 };
 
 export type GetRestaurantResponseDto = {
-  restaurant: RestaurantDto;
+  restaurant: RestaurantDetailsDto;
+};
+
+export type RestaurantDetailsDto = RestaurantDto & {
+  categories: CategoryDto[];
+  menuItems: MenuItemDto[];
 };
 
 export type AddRestaurantRequestDto = z.infer<

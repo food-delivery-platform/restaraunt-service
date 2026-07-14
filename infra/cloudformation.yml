@@ -1,0 +1,361 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Menu service container stack: ECR, ECS Fargate, ALB, logs, IAM, and application roles."
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: menu-service
+
+  EnvironmentName:
+    Type: String
+    Default: prod
+
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Default: vpc-0632cb032dfc855e1
+
+  AlbSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Default: subnet-0bff775272217792a,subnet-029e5690fe01aec78
+    Description: Public subnets for the application load balancer.
+
+  ServiceSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Default: subnet-0bff775272217792a,subnet-029e5690fe01aec78
+    Description: Subnets where ECS tasks run.
+
+  AssignPublicIp:
+    Type: String
+    Default: ENABLED
+    AllowedValues:
+      - ENABLED
+      - DISABLED
+
+  AllowedIngressCidr:
+    Type: String
+    Default: 0.0.0.0/0
+
+  ContainerPort:
+    Type: Number
+    Default: 3000
+
+  DesiredCount:
+    Type: Number
+    Default: 1
+    Description: Number of ECS tasks to run under normal operation.
+
+  AutoScalingMinCapacity:
+    Type: Number
+    Default: 1
+    MinValue: 0
+    Description: Minimum number of ECS tasks maintained by Application Auto Scaling.
+
+  AutoScalingMaxCapacity:
+    Type: Number
+    Default: 4
+    MinValue: 1
+    Description: Maximum number of ECS tasks allowed by Application Auto Scaling.
+
+  AutoScalingCpuTarget:
+    Type: Number
+    Default: 60
+    MinValue: 1
+    MaxValue: 100
+    Description: Average ECS service CPU utilization percentage to target.
+
+  TaskCpu:
+    Type: String
+    Default: "256"
+    AllowedValues:
+      - "256"
+      - "512"
+      - "1024"
+      - "2048"
+      - "4096"
+
+  TaskMemory:
+    Type: String
+    Default: "512"
+    AllowedValues:
+      - "512"
+      - "1024"
+      - "2048"
+      - "3072"
+      - "4096"
+      - "5120"
+      - "6144"
+      - "7168"
+      - "8192"
+
+  ImageUri:
+    Type: String
+    Default: public.ecr.aws/docker/library/busybox:latest
+    Description: Container image to run in ECS. GitHub Actions updates this on every push.
+
+  DatabaseSecretArn:
+    Type: String
+    Default: arn:aws:secretsmanager:us-east-1:995303881297:secret:restaurant_db_secret-0FyLSi
+    Description: ARN of the Secrets Manager secret containing RESTAURANT_DB_URL.
+
+  DbSsl:
+    Type: String
+    Default: "true"
+    AllowedValues:
+      - "true"
+      - "false"
+
+  DbPoolMin:
+    Type: String
+    Default: "0"
+
+  DbPoolMax:
+    Type: String
+    Default: "10"
+
+Conditions:
+  HasApplicationImage: !Not
+    - !Equals
+      - !Ref ImageUri
+      - public.ecr.aws/docker/library/busybox:latest
+
+Resources:
+  Repository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Ref ProjectName
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {
+            "rules": [
+              {
+                "rulePriority": 1,
+                "description": "Keep the last 30 images",
+                "selection": {
+                  "tagStatus": "any",
+                  "countType": "imageCountMoreThan",
+                  "countNumber": 30
+                },
+                "action": {
+                  "type": "expire"
+                }
+              }
+            ]
+          }
+
+  Cluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub ${ProjectName}-${EnvironmentName}
+
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /ecs/${ProjectName}-${EnvironmentName}
+      RetentionInDays: 30
+
+  LoadBalancerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub ${ProjectName} ALB security group
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: !Ref AllowedIngressCidr
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+
+  ServiceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub ${ProjectName} ECS service security group
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: !Ref ContainerPort
+          ToPort: !Ref ContainerPort
+          SourceSecurityGroupId: !Ref LoadBalancerSecurityGroup
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub ${ProjectName}-${EnvironmentName}
+      Scheme: internet-facing
+      SecurityGroups:
+        - !Ref LoadBalancerSecurityGroup
+      Subnets: !Ref AlbSubnetIds
+      Type: application
+
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckPath: /health
+      HealthCheckProtocol: HTTP
+      Matcher:
+        HttpCode: "200"
+      Port: !Ref ContainerPort
+      Protocol: HTTP
+      TargetType: ip
+      VpcId: !Ref VpcId
+
+  Listener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 80
+      Protocol: HTTP
+
+  TaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${ProjectName}-${EnvironmentName}-execution
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+
+  TaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${ProjectName}-${EnvironmentName}-task
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: read-database-secret
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: !Ref DatabaseSecretArn
+
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub ${ProjectName}-${EnvironmentName}
+      Cpu: !Ref TaskCpu
+      Memory: !Ref TaskMemory
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      ExecutionRoleArn: !GetAtt TaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt TaskRole.Arn
+      ContainerDefinitions:
+        - Name: !Ref ProjectName
+          Image: !Ref ImageUri
+          Essential: true
+          PortMappings:
+            - ContainerPort: !Ref ContainerPort
+              Protocol: tcp
+          Environment:
+            - Name: AWS_DB_SECRET_ARN
+              Value: !Ref DatabaseSecretArn
+            - Name: AWS_REGION
+              Value: !Ref AWS::Region
+            - Name: DB_SSL
+              Value: !Ref DbSsl
+            - Name: PORT
+              Value: !Ref ContainerPort
+            - Name: DB_POOL_MIN
+              Value: !Ref DbPoolMin
+            - Name: DB_POOL_MAX
+              Value: !Ref DbPoolMax
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs
+
+  Service:
+    Type: AWS::ECS::Service
+    DependsOn:
+      - Listener
+    Properties:
+      ServiceName: !Sub ${ProjectName}-${EnvironmentName}
+      Cluster: !Ref Cluster
+      DesiredCount: !If
+        - HasApplicationImage
+        - !Ref DesiredCount
+        - 0
+      LaunchType: FARGATE
+      TaskDefinition: !Ref TaskDefinition
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: !Ref AssignPublicIp
+          SecurityGroups:
+            - !Ref ServiceSecurityGroup
+          Subnets: !Ref ServiceSubnetIds
+      LoadBalancers:
+        - ContainerName: !Ref ProjectName
+          ContainerPort: !Ref ContainerPort
+          TargetGroupArn: !Ref TargetGroup
+
+  ServiceScalableTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      MinCapacity: !If
+        - HasApplicationImage
+        - !Ref AutoScalingMinCapacity
+        - 0
+      MaxCapacity: !Ref AutoScalingMaxCapacity
+      ResourceId: !Join
+        - "/"
+        - - service
+          - !Ref Cluster
+          - !GetAtt Service.Name
+      ScalableDimension: ecs:service:DesiredCount
+      ServiceNamespace: ecs
+
+  ServiceCpuScalingPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub ${ProjectName}-${EnvironmentName}-cpu-target-tracking
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref ServiceScalableTarget
+      TargetTrackingScalingPolicyConfiguration:
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ECSServiceAverageCPUUtilization
+        ScaleInCooldown: 300
+        ScaleOutCooldown: 60
+        TargetValue: !Ref AutoScalingCpuTarget
+
+Outputs:
+  LoadBalancerUrl:
+    Value: !Sub http://${LoadBalancer.DNSName}
+
+  EcrRepositoryName:
+    Value: !Ref Repository
+
+  EcsClusterName:
+    Value: !Ref Cluster
+
+  EcsServiceName:
+    Value: !GetAtt Service.Name
+
+  EcsTaskDefinitionFamily:
+    Value: !Sub ${ProjectName}-${EnvironmentName}
+
+  EcsContainerName:
+    Value: !Ref ProjectName

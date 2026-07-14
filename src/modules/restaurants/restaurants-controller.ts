@@ -1,5 +1,7 @@
 import { Router } from "express";
 
+import { categoryService } from "../categories/services/category-service-impl";
+import { menuItemService } from "../menu-items/services/menu-item-service-impl";
 import {
   addRestaurantRequestDtoSchema,
   editRestaurantRequestDtoSchema,
@@ -14,7 +16,12 @@ restaurantRouter.get("/", async (_req, res) => {
 
 restaurantRouter.get("/:id", async (req, res) => {
   const restaurant = await restaurantService.getRestaurant(req.params.id);
-  res.json({ restaurant });
+  const [categories, menuItems] = await Promise.all([
+    categoryService.getCategoriesByRestaurant(restaurant.id),
+    menuItemService.getMenuItemsByRestaurant(restaurant.id),
+  ]);
+
+  res.json({ restaurant: { ...restaurant, categories, menuItems } });
 });
 
 restaurantRouter.post("/", async (req, res) => {

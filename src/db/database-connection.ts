@@ -17,9 +17,9 @@ export const getDatabaseConnection = (): Promise<Knex.PgConnectionConfig> => {
 };
 
 const loadDatabaseConnection = async (): Promise<Knex.PgConnectionConfig> => {
-  const secretId = process.env.AWS_DB_SECRET_ID;
-  if (secretId === undefined || secretId.length === 0) {
-    throw new Error("AWS_DB_SECRET_ID environment variable is required");
+  const secretArn = process.env.AWS_DB_SECRET_ARN;
+  if (secretArn === undefined || secretArn.length === 0) {
+    throw new Error("AWS_DB_SECRET_ARN environment variable is required");
   }
 
   const client = new SecretsManagerClient({
@@ -30,7 +30,7 @@ const loadDatabaseConnection = async (): Promise<Knex.PgConnectionConfig> => {
 
   try {
     const response = await client.send(
-      new GetSecretValueCommand({ SecretId: secretId }),
+      new GetSecretValueCommand({ SecretId: secretArn }),
     );
     const secretValue =
       response.SecretString ??

@@ -6,6 +6,7 @@ import {
   getMenuItemsByRestaurantQuerySchema,
   getMenuItemsByIdsRequestDtoSchema,
 } from "./schemas/menu-item-rest-schema";
+import { validateMenuItemsForOrderRequestDtoSchema } from "./schemas/menu-item-validation-schema";
 import { menuItemService } from "./services/menu-item-service-impl";
 
 export const menuItemRouter = Router();
@@ -30,6 +31,11 @@ menuItemRouter.get("/:id", async (req, res) => {
 menuItemRouter.post("/by-ids", async (req, res) => {
   const request = getMenuItemsByIdsRequestDtoSchema.parse(req.body);
   res.json(await menuItemService.getMenuItemsByIds(request));
+});
+
+menuItemRouter.post("/validate", async (req, res) => {
+  const request = validateMenuItemsForOrderRequestDtoSchema.parse(req.body);
+  res.json(await menuItemService.validateMenuItemsForOrder(request));
 });
 
 menuItemRouter.post("/", async (req, res) => {

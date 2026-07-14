@@ -6,8 +6,8 @@ MenuService stores menu items in Supabase. The `price` is serialized as a string
 
 ## PostgreSQL credentials
 
-In production, set `AWS_DB_SECRET_ID` to the name or ARN of an AWS Secrets
-Manager secret and set `AWS_REGION`. Both settings are required. The secret must
+In production, set `AWS_DB_SECRET_ARN` to the ARN of an AWS Secrets Manager
+secret and set `AWS_REGION`. Both settings are required. The secret must
 contain:
 
 ```json
@@ -34,17 +34,9 @@ retrieved once and cached for the lifetime of the process.
 - `GET /menu-items/{id}` — Get menu item by ID
 - `GET /menu-items?restaurantId={restaurantId}` — Get available menu items by restaurant
 - `POST /menu-items/by-ids` — Get menu items by IDs
+- `POST /menu-items/validate` — Validate menu items for order creation
 - `POST /menu-items` — Add menu item
 - `PATCH /menu-items/{id}` — Edit menu item
-
-## Lambda Functions
-
-- `ValidateMenuItems` — Validate menu items for order creation
-
-The Lambda handler is `src/lambdas/validate-menu-items.handler`. It accepts the
-`ValidateMenuItemsForOrderRequestDto` object as the invocation event and returns
-`ValidateMenuItemsForOrderResponseDto` directly. Order validation is not exposed
-as an HTTP endpoint.
 
 ## MenuItemDto
 
@@ -170,7 +162,10 @@ Used to retrieve one restaurant.
 
 ```typescript
 export type GetRestaurantResponseDto = {
-  restaurant: RestaurantDto;
+  restaurant: RestaurantDto & {
+    categories: CategoryDto[];
+    menuItems: MenuItemDto[];
+  };
 };
 ```
 
@@ -504,10 +499,11 @@ export type EditMenuItemResponseDto = {
 
 ## Validate Menu Items for Order Creation
 
-Lambda function that validates menu items for order creation before the OrderService creates an order.
+HTTP endpoint that validates menu items for order creation before the OrderService creates an order.
 
-- **Type:** Lambda Function
-- **Trigger:** Called by OrderService
+- **REST method:** `POST`
+- **Endpoint:** `/menu-items/validate`
+- **Caller:** OrderService
 - **Input:** `ValidateMenuItemsForOrderRequestDto`
 - **Output:** `ValidateMenuItemsForOrderResponseDto`
 
