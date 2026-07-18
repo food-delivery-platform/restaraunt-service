@@ -20,9 +20,9 @@ export const createApp = () => {
     res.json({ status: "ok" });
   });
 
-  app.use("/restaurants", restaurantRouter);
-  app.use("/categories", categoryRouter);
-  app.use("/menu-items", menuItemRouter);
+  app.use("/api/restaurants", restaurantRouter);
+  app.use("/api/categories", categoryRouter);
+  app.use("/api/menu-items", menuItemRouter);
 
   app.use(errorHandler);
 
