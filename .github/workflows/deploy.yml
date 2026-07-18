@@ -10,6 +10,12 @@ permissions:
   contents: read
   id-token: write
 
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: delivery-service/restaraunt-service
+  PLATFORM_STACK_NAME: food-delivery-preview-platform
+  RUNTIME_STACK_NAME: restaurant-service-runtime
+
 jobs:
   deploy:
     name: Build image and deploy stack
@@ -35,29 +41,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v6.1.0
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
-          aws-region: us-east-1
-
-      - name: Ensure stack exists
-        run: |
-          if aws cloudformation describe-stacks --stack-name "${{ github.event.repository.name }}-prod" >/dev/null 2>&1; then
-            echo "Stack already exists"
-            exit 0
-          fi
-
-          aws cloudformation deploy \
-            --stack-name "${{ github.event.repository.name }}-prod" \
-            --template-file infra/cloudformation.yml \
-            --capabilities CAPABILITY_NAMED_IAM \
-            --no-fail-on-empty-changeset
-
-      - name: Read stack outputs
-        id: stack-outputs
-        run: |
-          repository="$(aws cloudformation describe-stacks \
-            --stack-name "${{ github.event.repository.name }}-prod" \
-            --query "Stacks[0].Outputs[?OutputKey=='EcrRepositoryName'].OutputValue | [0]" \
-            --output text)"
-          echo "repository=$repository" >> "$GITHUB_OUTPUT"
+          aws-region: ${{ env.AWS_REGION }}
 
       - name: Login to Amazon ECR
         id: login-ecr
@@ -67,20 +51,73 @@ jobs:
         id: build-image
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          ECR_REPOSITORY: ${{ steps.stack-outputs.outputs.repository }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          IMAGE_URI="$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+          set -euo pipefail
+          IMAGE_URI="$ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG"
           docker build -t "$IMAGE_URI" .
           docker push "$IMAGE_URI"
           echo "image=$IMAGE_URI" >> "$GITHUB_OUTPUT"
 
-      - name: Deploy CloudFormation stack
+      - name: Check if the preview platform is running
+        id: platform
         run: |
+          set -euo pipefail
+
+          if STATUS=$(aws cloudformation describe-stacks \
+              --stack-name "${{ env.PLATFORM_STACK_NAME }}" \
+              --query "Stacks[0].StackStatus" \
+              --output text 2>/dev/null); then
+            case "$STATUS" in
+              CREATE_COMPLETE|UPDATE_COMPLETE|UPDATE_ROLLBACK_COMPLETE)
+                echo "running=true" >> "$GITHUB_OUTPUT"
+                ;;
+              *)
+                echo "::warning::$PLATFORM_STACK_NAME status is $STATUS, skipping service deploy"
+                echo "running=false" >> "$GITHUB_OUTPUT"
+                ;;
+            esac
+          else
+            echo "::notice::$PLATFORM_STACK_NAME is not deployed right now. Image was pushed to ECR but the service was not updated."
+            echo "running=false" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          PLATFORM_STACK_NAME: ${{ env.PLATFORM_STACK_NAME }}
+
+      - name: Read preview platform outputs
+        if: steps.platform.outputs.running == 'true'
+        id: platform-outputs
+        run: |
+          set -euo pipefail
+
+          OUT=$(aws cloudformation describe-stacks \
+            --stack-name "${{ env.PLATFORM_STACK_NAME }}" \
+            --query "Stacks[0].Outputs" \
+            --output json)
+
+          get() {
+            echo "$OUT" | jq -r --arg key "$1" '.[] | select(.OutputKey == $key) | .OutputValue'
+          }
+
+          echo "cluster=$(get ClusterName)" >> "$GITHUB_OUTPUT"
+          echo "target-group=$(get RestaurantTargetGroupArn)" >> "$GITHUB_OUTPUT"
+          echo "security-group=$(get RestaurantTaskSecurityGroupId)" >> "$GITHUB_OUTPUT"
+          echo "subnets=$(get SubnetIds)" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy restaurant-service-runtime stack
+        if: steps.platform.outputs.running == 'true'
+        run: |
+          set -euo pipefail
+
           aws cloudformation deploy \
-            --stack-name "${{ github.event.repository.name }}-prod" \
+            --stack-name "${{ env.RUNTIME_STACK_NAME }}" \
             --template-file infra/cloudformation.yml \
             --capabilities CAPABILITY_NAMED_IAM \
             --no-fail-on-empty-changeset \
             --parameter-overrides \
-              ImageUri="${{ steps.build-image.outputs.image }}"
+              ClusterName="${{ steps.platform-outputs.outputs.cluster }}" \
+              TargetGroupArn="${{ steps.platform-outputs.outputs.target-group }}" \
+              TaskSecurityGroupId="${{ steps.platform-outputs.outputs.security-group }}" \
+              SubnetIds="${{ steps.platform-outputs.outputs.subnets }}" \
+              ImageUri="${{ steps.build-image.outputs.image }}" \
+              DatabaseSecretArn="${{ secrets.DATABASE_SECRET_ARN }}"

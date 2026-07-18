@@ -1,75 +1,91 @@
-# Menu Service AWS Stack
+# Restaurant Service Runtime Stack
 
-This stack creates the AWS runtime for the Dockerized endpoint service:
+This stack creates only the restaurant-service ECS Fargate task definition
+and service. It attaches to infrastructure created elsewhere instead of
+owning it:
 
-- ECR repository
-- ECS Fargate task definition and service running in an existing cluster
-- ECS target-tracking auto scaling based on average CPU utilization
-- Application Load Balancer with `/health` target checks
+- ECR repository: created manually, not by this stack
+  (`delivery-service/restaraunt-service`).
+- ECS cluster, internal ALB, target group, and task security group: created
+  by the `food-delivery-preview-platform` stack in the
+  `food-delivery-infrastructure` repository.
+
+This stack itself creates only:
+
+- ECS Fargate task definition
+- ECS service (attached to the existing cluster/target group/security group)
 - CloudWatch log group
 - ECS task execution role and task role
 
-GitHub Actions deploys by running CloudFormation. ECS is not updated directly by the workflow.
+Stack name must be exactly `restaurant-service-runtime`. The shared cleanup
+automation in `food-delivery-infrastructure` only knows how to delete that
+exact name, `delivery-service-runtime`, and `food-delivery-preview-platform`.
+
+## Lifecycle
+
+The `food-delivery-preview-platform` stack (and this stack's cluster/ALB/
+target group dependencies) only exist for a limited time — someone runs the
+`food-delivery-infrastructure` repo's "Deploy delivery and restaurant
+preview" workflow with a `lifetime_minutes` input (default 60), and an
+EventBridge Scheduler one-time rule deletes everything after that.
+
+This repo's deploy workflow does not create or extend that lifetime. It
+only checks whether `food-delivery-preview-platform` currently exists and
+is healthy:
+
+- If it is running: build and push the image to ECR, then deploy/update
+  `restaurant-service-runtime` with the new `ImageUri`, which forces a new
+  ECS task-definition revision and a rolling service update.
+- If it is not running (already cleaned up, or never deployed): the image
+  is still pushed to ECR, but the CloudFormation deploy step is skipped —
+  there is no cluster, target group, or security group to attach to.
 
 ## Prerequisites
 
-This stack assumes the GitHub deploy role already exists outside this service stack. Store that role ARN in GitHub as `AWS_ROLE_TO_ASSUME`.
+- `AWS_ROLE_TO_ASSUME` GitHub secret: role with permission to push to the
+  `delivery-service/restaraunt-service` ECR repository, read
+  `food-delivery-preview-platform` stack outputs, and deploy/update the
+  `restaurant-service-runtime` stack (including `iam:PassRole` for the task
+  execution and task roles it creates).
+- `DATABASE_SECRET_ARN` GitHub secret: ARN of the Secrets Manager secret
+  containing `RESTAURANT_DB_URL`. Passed to the stack as the
+  `DatabaseSecretArn` parameter on every deploy — the ARN has no default in
+  `cloudformation.yml` and never lives in source control.
+- The database secret must already exist in Secrets Manager with a JSON
+  value containing:
 
-It also assumes the `food-delivery-preview-cluster` ECS cluster already exists.
-You can override that default with the `EcsClusterName` CloudFormation parameter.
+  ```json
+  {
+    "RESTAURANT_DB_URL": "postgresql://user:password@host:5432/database"
+  }
+  ```
 
-That external role needs permission to:
+## Manual Deploy
 
-- push images to the service ECR repository
-- run `aws cloudformation deploy` for this stack
-- create/update the resources in this template
-- pass the ECS task execution role and task role
+Only useful while `food-delivery-preview-platform` is running. Fetch its
+outputs first:
 
-Create the database secret first. Its JSON value must contain:
-
-```json
-{
-  "RESTAURANT_DB_URL": "postgresql://user:password@host:5432/database"
-}
+```bash
+aws cloudformation describe-stacks \
+  --stack-name food-delivery-preview-platform \
+  --query "Stacks[0].Outputs"
 ```
 
-## Deploy Stack Manually
+Then:
 
 ```bash
 aws cloudformation deploy \
-  --stack-name menu-service-prod \
+  --stack-name restaurant-service-runtime \
   --template-file infra/cloudformation.yml \
-  --capabilities CAPABILITY_NAMED_IAM
+  --capabilities CAPABILITY_NAMED_IAM \
+  --parameter-overrides \
+    ClusterName=<ClusterName> \
+    TargetGroupArn=<RestaurantTargetGroupArn> \
+    TaskSecurityGroupId=<RestaurantTaskSecurityGroupId> \
+    SubnetIds=<SubnetIds> \
+    ImageUri=<image> \
+    DatabaseSecretArn=<DatabaseSecretArn>
 ```
 
-CloudFormation keeps the service at zero tasks while it uses the bootstrap image.
-GitHub Actions later deploys the real image by passing
-`ImageUri=<new pushed image>`, which enables the configured desired count and
-autoscaling minimum.
-
-The bootstrap task definition uses the fixed `busybox:1.36.1` tag. Application
-images are tagged with the Git commit SHA, so deployed revisions do not use
-`latest`.
-
-## GitHub Settings
-
-```text
-Secret:
-AWS_ROLE_TO_ASSUME=<existing GitHub deploy role ARN>
-```
-
-## Push Deployment
-
-After the GitHub settings exist, every push to `main` runs:
-
-1. `npm run check`
-2. Docker build
-3. Docker push to ECR
-4. `aws cloudformation deploy` with `ImageUri=<new pushed image>`
-
-CloudFormation updates the ECS task definition and service.
-
-Application Auto Scaling keeps the service between the configured minimum and
-maximum task counts. It adds tasks when average service CPU is above the target
-and removes tasks after utilization falls below it. Scale-out has a 60-second
-cooldown; scale-in has a 300-second cooldown to reduce task-count churn.
+Application images are tagged with the Git commit SHA, so deployed
+revisions do not use `latest`.
